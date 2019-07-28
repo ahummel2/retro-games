@@ -97,6 +97,24 @@ class BlockGame:
 			self.color = int(color)
 		
 def main():
+	#drivers = ('X11', 'dga', 'ggi','vgl','aalib','directfb', 'fbcon', 'svgalib')
+	drivers = ('directfb', 'fbcon', 'svgalib', 'directx')
+
+	os.environ["SDL_FBDEV"] = "/dev/fb0"
+
+	found = False
+	for driver in drivers:
+		print "Trying \'" + driver + "\'",
+		if not os.getenv('SDL_VIDEODRIVER'):
+			os.putenv('SDL_VIDEODRIVER',driver)
+		try:
+			pygame.display.init()
+		except pygame.error:
+			print 'failed'
+			continue
+		found = True
+		break
+	print(found, driver)
 	pygame.init()
 	random.seed()
 	

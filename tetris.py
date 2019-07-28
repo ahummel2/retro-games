@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 
 import os
 import sys
@@ -6,13 +6,13 @@ import math
 import time
 import random
 import pygame
-import numpy
-from pygame.locals import *
 import argparse
+import threading
+from pygame.locals import *
 
 class BlockGame:
 	def __init__(self, screen, width, height, colors, x_scalar, y_scalar):
-		self.rbg = [(255,0,0),(0,255,0),(0,0,255),(204,204,0),(204,0,204),(0,204,204), (255,255,255)]
+		self.rbg = [(255,0,0),(0,255,0),(0,0,255),(204,204,0),(204,0,204),(0,204,204),(255,255,255),(140,140,140)]
 		self.width = int(width)
 		self.height = int(height)
 		self.x_scalar = int(x_scalar)
@@ -68,18 +68,9 @@ class BlockGame:
 	def print_details(self):
 		for id in self.shapes:
 			print(self.shapes[id].id,self.shapes[id].x,self.shapes[id].y)
-
-	def handle_button_press(self, coords):
-		x, y = coords
-		x_coord = int(math.floor(x / self.x_scalar))
-		y_coord = int(math.floor(y / self.y_scalar))
-		source = self.map[x_coord][y_coord]
-		self.map[x_coord][y_coord] = None
-		self.delete_similar_block(source.x, source.y, source.color)
-		self.update_block_positions()
-		num_created = self.create_new_blocks()
-		self.score += self.score_calc(num_created)
-		self.moves += 1
+	
+	def rotate_shape(self, direction):
+		print(direction)
 
 	def update_shape_position(self, id, dir):
 		if dir == 'down':
@@ -143,13 +134,15 @@ class BlockGame:
 				lines_cleared += 1
 
 		if lines_cleared > 0:
-			for block in deletables:
-				block.color = 6
-				##  Not working, but maybe if I split the drawing and game portion into different threads
-				##  this may update and draw.  think the tick isn't being triggered because this is stalling
-				##  until the rest of the function continues erasing the work
-			self.draw_board(self.screen)
-			time.sleep(1)
+			##	toggle the colors a bit then delete the blocks
+			for i in range(4):
+				for block in deletables:
+					if block.color == 6:
+						block.color = 7
+					else:
+						block.color = 6
+				time.sleep(0.3)
+				
 			for block in deletables:
 				shape = self.map[block.x][block.y]
 				self.map[block.x][block.y] = None
@@ -234,16 +227,29 @@ class BlockGame:
 				block.x += x_diff
 				block.y += y_diff
 
+class screen_draw_thread(threading.Thread):
+	def __init__(self):
+		threading.Thread.__init__(self)
+		self.running = True
+	def run(self):
+		while(running):
+			game_instance.draw_board(screen)
+			pygame.display.flip()
+
 
 def main():
+	##	In windows this doesn't work unless there's an x-server running
+	##	Need to start up mobaXterm and the x-server through that to get the window to appear
+	os.environ['SDL_AUDIODRIVER'] = 'dummy'
+	os.environ['SDL_VIDEODRIVER'] = 'x11'
 	pygame.init()
 	random.seed()
 	
-	parser = argparse.ArgumentParser(description='Basic block busting game demo')
+	parser = argparse.ArgumentParser(description='Tetris clone')
 	parser.add_argument('-g', '--grid', type=str, default='8x8', help='size of the gameboard, WxH')
 	parser.add_argument('-c', '--colors', type=int, default=3, help='number of colors to use')
 	#parser.add_argument('-m', '--moves', type=int, default=20, help='number of moves allowed in a game')
-	parser.add_argument('-s', '--size', type=str, default='320x240', help='size of the game screen')
+	parser.add_argument('-s', '--size', type=str, default='640x480', help='size of the game screen')
 
 	args = parser.parse_args()
 
@@ -253,33 +259,44 @@ def main():
 	x_scalar = math.floor(screen_width / grid_width)
 	y_scalar = math.floor(screen_height / grid_height)
 
+	##	ideally would like to do without global vars, I don't think it'd be easy to send updates
+	##	quickly to the drawing thread though
+	global screen, game_instance
 	screen = pygame.display.set_mode((screen_width, screen_height))
-	instance = BlockGame(screen, grid_width, grid_height, args.colors, x_scalar, y_scalar)
+	game_instance = BlockGame(screen, grid_width, grid_height, args.colors, x_scalar, y_scalar)
 
+	global running
 	running = True
-	while(running):
-		if instance.game_over():
-			print('Final Score:', int(instance.score))
-			running=False
-			break
-		for event in pygame.event.get():
-			if event.type == pygame.QUIT:
-				running = False
-			elif event.type == KEYDOWN and event.key == K_ESCAPE:
-				running = False
-			elif event.type == KEYDOWN and event.key == K_LEFT:
-				instance.update_shape_position(None, 'left')
-			elif event.type == KEYDOWN and event.key == K_RIGHT:
-				instance.update_shape_position(None, 'right')
-			elif event.type == KEYDOWN and event.key == K_DOWN:
-				instance.update_shape_position(None, 'down')
-			elif event.type == MOUSEBUTTONDOWN:
-				instance.print_details()
-				instance.tick()
-
-		instance.draw_board(screen)
-		pygame.display.flip()
-			
+	display_thread = screen_draw_thread()
+	display_thread.start()
+	try:
+		while(running):
+			if game_instance.game_over():
+				print('Final Score:', int(game_instance.score))
+				running=False
+				break
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT:
+					running = False
+				elif event.type == KEYDOWN and event.key == K_ESCAPE:
+					running = False
+				elif event.type == KEYDOWN and event.key in (K_LEFT,K_a):
+					game_instance.update_shape_position(None, 'left')
+				elif event.type == KEYDOWN and event.key in (K_RIGHT,K_d):
+					game_instance.update_shape_position(None, 'right')
+				elif event.type == KEYDOWN and event.key in (K_DOWN,K_s):
+					game_instance.update_shape_position(None, 'down')
+				elif event.type == KEYDOWN and event.key in (K_q):
+					game_instance.rotate_piece('left')
+				elif event.type == KEYDOWN and event.key in (K_e):
+					game_instance.rotate_piece('right')
+				elif event.type == MOUSEBUTTONDOWN:
+					#game_instance.print_details()
+					game_instance.tick()
+	except:
+		print('exception found:',a)
+	finally:
+		display_thread.join()		
 	
 if __name__ == "__main__":
 	main()

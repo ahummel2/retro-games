@@ -33,7 +33,7 @@ class BlockGame:
 		self.shapes[self.counter] = self.current
 
 	def place_new_shape(self, id, x, y):
-		new_shape = BlockGame.Shape(id, x, y, color=random.randrange(self.colors), type=random.randrange(3), rotation=0)
+		new_shape = BlockGame.Shape(id, x, y, color=random.randrange(self.colors), type=random.randrange(6), rotation=0)
 		invalid_pos = False
 		while(not invalid_pos):
 			for block in new_shape.blocks:
@@ -259,11 +259,15 @@ class BlockGame:
 			##	4, zag right
 			##	5, zag left
 			##	6, 3 sider
-			long_rotations = [[(-1,0),(0,0),(1,0),(2,0)],[(1,-1),(1,0),(1,1),(1,2)],[(2,-1),(1,-1),(0,-1),(-1,-1)],[(0,-2),(0,-1),(0,0),(0,1)]]
-			l_left_rotations = [[(-1,-1),(-1,0),(0,0),(1,0)],[(1,-1),(0,-1),(0,0),(0,1)],[(1,1),(1,0),(0,0),(-1,0)],[(-1,1),(0,1),(0,0),(0,-1)]]
-			l_right_rotations = [[(-1,0),(0,0),(1,0),(1,-1)],[(0,-1),(0,0),(0,1),(1,1)],[(1,0),(0,0),(-1,0),(-1,1)],[(0,1),(0,0),(0,-1),(-1,-1)]]
+			long_rotations =	[[(-1,0),(0,0),(1,0),(2,0)],	[(1,-1),(1,0),(1,1),(1,2)],	[(2,-1),(1,-1),(0,-1),(-1,-1)],	[(0,-2),(0,-1),(0,0),(0,1)]]
+			l_left_rotations =	[[(-1,-1),(-1,0),(0,0),(1,0)],	[(1,-1),(0,-1),(0,0),(0,1)],[(1,1),(1,0),(0,0),(-1,0)],		[(-1,1),(0,1),(0,0),(0,-1)]]
+			l_right_rotations =	[[(-1,0),(0,0),(1,0),(1,-1)],	[(0,-1),(0,0),(0,1),(1,1)],	[(1,0),(0,0),(-1,0),(-1,1)],	[(0,1),(0,0),(0,-1),(-1,-1)]]
+			square_rotations =	[[(-1,-1),(0,-1),(-1,0),(0,0)],	[(1,-1),(1,0),(0,-1),(0,0)],[(1,1),(0,1),(1,0),(0,0)],		[(-1,1),(-1,0),(0,1),(0,0)]]
+			z_left_rotations =	[[(-1,-1),(0,-1),(0,0),(1,0)],	[(1,-1),(1,0),(0,0),(0,1)],	[(1,1),(0,1),(0,0),(-1,0)],		[(-1,1),(-1,0),(0,0),(0,-1)]]
+			z_right_rotations =	[[(-1,0),(0,0),(0,-1),(1,-1)],	[(0,-1),(0,0),(1,0),(1,1)],	[(1,0),(0,0),(0,1),(-1,1)],		[(0,1),(0,0),(-1,0),(-1,-1)]]
+			pyramid_rotations =	[[(-1,0),(0,-1),(1,0),(0,0)],	[(0,-1),(1,0),(0,1),(0,0)],	[(1,0),(0,1),(-1,0),(0,0)],		[(0,1),(-1,0),(0,-1),(0,0)]]
 			
-			self.rotations = [long_rotations, l_left_rotations, l_right_rotations]
+			self.rotations = [long_rotations, l_left_rotations, l_right_rotations, square_rotations, z_left_rotations, z_right_rotations, pyramid_rotations]
 			
 			self.blocks.append(BlockGame.Block(self.id,0,self.x + self.rotations[self.type][rotation][0][0],self.y + self.rotations[self.type][rotation][0][1],self.color))
 			self.blocks.append(BlockGame.Block(self.id,1,self.x + self.rotations[self.type][rotation][1][0],self.y + self.rotations[self.type][rotation][1][1],self.color))

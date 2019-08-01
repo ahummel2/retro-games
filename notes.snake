@@ -1,0 +1,7 @@
+game instance moving the snake once a tick
+changing dirs on key presses
+randomly placing a dot on the available map locations
+if snake and dot are on the same location, destroy dot
+  increment score, add a tail to the last of the current chain's position
+end game when snake runs into itself or wall
+snake update: list of elements maybe? start from end, replace x/y with next

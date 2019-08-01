@@ -1,0 +1,8 @@
+two maps, background and movable elements
+draw should check for elements then fall back to background
+rely on pygame.tick to move obstacles around mostly
+  will need to adapt the display process to handle smooth movement and hitboxes
+movement for frogger is obvious
+hitboxes is new but shouldn't be that weird
+new win condition and level mechanics
+lives, though that's easy to implement

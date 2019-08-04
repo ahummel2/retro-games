@@ -1,0 +1,3 @@
+need to change how the blocks look, to differentiate them a bit
+expand the screen to include a block for score and the next shape
+create the next shape beforehand, maybe add an 'active' flag to check

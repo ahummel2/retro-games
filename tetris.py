@@ -33,7 +33,7 @@ class BlockGame:
 		self.shapes[self.counter] = self.current
 
 	def place_new_shape(self, id, x, y):
-		new_shape = BlockGame.Shape(id, x, y, color=random.randrange(self.colors), type=random.randrange(6), rotation=0)
+		new_shape = BlockGame.Shape(id, x, y, color=random.randrange(self.colors), type=random.randrange(7), rotation=0)
 		invalid_pos = False
 		while(not invalid_pos):
 			for block in new_shape.blocks:
@@ -124,7 +124,7 @@ class BlockGame:
 		##	Do I give up if the exact expected rotation doesnt fit
 		##	Or look around for nearby positions that may fit
 
-	def update_shape_position(self, dir, id=None):
+	def update_shape_position(self, dir, id=None, line_limit=False):
 		if dir == 'down':
 			x_dir = 0
 			y_dir = 1
@@ -143,36 +143,61 @@ class BlockGame:
 		if len(shape.blocks) == 0:
 			return False
 
-		can_move = True
-		for block in shape.blocks:
-			if block.y + y_dir >= self.height:
-				can_move = False
-				break
-			if block.x + x_dir < 0 or block.x + x_dir > self.width - 1:
-				can_move = False
-				break
-			#if block.y < self.height - 1:
-			if self.map[block.x+x_dir][block.y+y_dir] != None:
-				if self.map[block.x+x_dir][block.y+y_dir].id != shape.id:
-					can_move = False
-		if can_move == True:
+		if line_limit == False:
+			can_move = True
 			for block in shape.blocks:
-				self.map[block.x][block.y] = None
-			shape.update_pos(x_dir, y_dir)
-			self.draw_shape(shape)
-			return True
+				if block.y + y_dir >= self.height:
+					can_move = False
+					break
+				if block.x + x_dir < 0 or block.x + x_dir > self.width - 1:
+					can_move = False
+					break
+				if self.map[block.x+x_dir][block.y+y_dir] != None:
+					if self.map[block.x+x_dir][block.y+y_dir].id != shape.id:
+						can_move = False
+				
+			if can_move == True:
+				for block in shape.blocks:
+					self.map[block.x][block.y] = None
+				shape.update_pos(x_dir, y_dir)
+				self.draw_shape(shape)
+				return True
+			else:
+				##	Only do this on the down dir and only on the current block
+				if dir == 'down' and id == None:
+					##	Was not able to move down anymore.  this should trigger a new shape
+					self.counter += 1
+					self.current = self.place_new_shape(self.counter, self.mid, 0)
+					self.shapes[self.counter] = self.current
+					self.clear_full_lines()
+				return False
 		else:
-			##	Only do this on the down dir and only on the current block
-			if dir == 'down' and id == None:
-				##	Was not able to move down anymore.  this should trigger a new shape
-				self.counter += 1
-				self.current = self.place_new_shape(self.counter, self.mid, 0)
-				self.shapes[self.counter] = self.current
-				self.clear_full_lines()
-			return False
+			##	Case where a line was removed and we need to check if a block can move down
+			##	Ignoring the shape attachment though, only move blocks individually
+			for block in shape.blocks:
+				can_move = True
+				if block.y + y_dir >= self.height:
+					can_move = False
+					break
+				if block.x + x_dir < 0 or block.x + x_dir > self.width - 1:
+					can_move = False
+					break
+				if self.map[block.x+x_dir][block.y+y_dir] != None:
+					if self.map[block.x+x_dir][block.y+y_dir].id != shape.id:
+						can_move = False
+				if block.y > line_limit:
+					can_move = False
+				
+				if can_move == True:
+					self.map[block.x][block.y] = None
+					block.update_pos(0,1)
+					self.map[block.x][block.y] = self.shapes[block.shape_id]
+					
+			return True
 
 	def clear_full_lines(self):
 		lines_cleared = 0
+		lowest_line = 0
 		deletables = []
 		for y in range(self.height):
 			complete = True
@@ -182,6 +207,7 @@ class BlockGame:
 					break
 
 			if complete:
+				lowest_line = y
 				for x in range(self.width):
 					##  Remove all of these blocks, ideally animated in some way so its not instant
 					shape = self.map[x][y]
@@ -193,6 +219,7 @@ class BlockGame:
 				lines_cleared += 1
 
 		if lines_cleared > 0:
+			print(lines_cleared)
 			##	toggle the colors a bit then delete the blocks
 			for i in range(4):
 				for block in deletables:
@@ -211,7 +238,7 @@ class BlockGame:
 			##  Move all remaining shapes/blocks down by 1
 			for i in range(lines_cleared):
 				for id in self.shapes:
-					self.update_shape_position('down', id)
+					self.update_shape_position('down', id, line_limit = lowest_line)
 
 		return lines_cleared
 
@@ -240,6 +267,10 @@ class BlockGame:
 			self.x = int(x)
 			self.y = int(y)
 			self.color = int(color)
+		
+		def update_pos(self, x_diff, y_diff):
+			self.x += x_diff
+			self.y += y_diff
 
 	class Shape:
 		def __init__(self, id, x, y, color=color, type=0, rotation=0):
@@ -278,8 +309,7 @@ class BlockGame:
 			self.x += x_diff
 			self.y += y_diff
 			for block in self.blocks:
-				block.x += x_diff
-				block.y += y_diff
+				block.update_pos(x_diff, y_diff)
 		
 		def update_rotation(self):
 			rotation_values = self.rotations[self.type][self.rotation]

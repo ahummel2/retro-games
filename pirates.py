@@ -23,7 +23,18 @@ class PirateGame:
 		self.cannonballs = []
 		self.user_ship = Ship()
 		self.ships.append(self.user_ship)
+		
+		self.initiate_world(1200,600)
 	
+	def initiate_world(self, x_max, y_max):
+		port = Island(10, 0, (random.randrange(x_max), random.randrange(y_max)), 0)
+		self.islands.append(port)
+		for i in range(5):
+			##	should do some checks to make sure random x/y arent overlapping
+			atoll = Island(6, 500, (random.randrange(x_max), random.randrange(y_max)), 1)
+			self.islands.append(atoll)
+			
+			
 	def draw_screen(self, screen):
 		screen.fill((130,130,130))
 		objects = self.objects_to_draw()
@@ -53,7 +64,6 @@ class PirateGame:
 	def fire_cannons(self, ship, offset):
 		x, y = ship.rect.center
 		angle = (ship.dir + offset) % 360
-		print(ship.dir, offset, angle)
 		for each in range(ship.cannons_per_side):
 			new = Cannonball(angle, ship.cannon_speed, ship.cannon_ticks, (x, y))
 			self.cannonballs.append(new)
@@ -87,6 +97,7 @@ class PirateGame:
 				if each.ticks > each.max_ticks:
 					self.cannonballs.remove(each)
 				
+				##	Need to check for collisions here, except for with the ship the cannonball was fired from
 	
 	def objects_to_draw(self):
 		objects = self.islands + self.ships + self.cannonballs
@@ -133,6 +144,17 @@ class Cannonball:
 		x += math.cos(math.radians(self.dir)) * self.speed
 		self.rect.center = (x, y)
 		self.ticks += 1
+
+class Island:
+	def __init__(self, size, time, pos, type):
+		self.size = size
+		self.time = time
+		self.type = type
+		self.pos = pos
+		self.sprite = pygame.image.load('sprites/fish_school.jpg').convert_alpha()
+		self.image = self.sprite
+		self.rect = self.image.get_rect()
+		self.rect.center = self.pos
 
 def screen_draw_thread(running):
 	while True:
@@ -196,3 +218,11 @@ def main():
 	
 if __name__ == "__main__":
 	main()
+
+
+
+##	have ship rotation and cannon fire working
+##	need movement(either simplified or tied to the wind)
+##	need to generate random fish spots and a port
+##	need to create second ship and start AI
+##	need to set target and move ship and execute command on certain conditions

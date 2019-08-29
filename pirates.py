@@ -24,6 +24,10 @@ class PirateGame:
 		self.user_ship = Ship()
 		self.ships.append(self.user_ship)
 		
+		self.ui_elements = []
+		ui_sail = UI_element((0.90,0.50), (0.10,0.90), 'vertical', ((200,150,200), (255,220,100)), 'self.user_ship.sail')
+		self.ui_elements.append(ui_sail)
+		
 		self.initiate_world(1200,600)
 	
 	def initiate_world(self, x_max, y_max):
@@ -34,12 +38,18 @@ class PirateGame:
 			atoll = Island(6, 500, (random.randrange(x_max), random.randrange(y_max)), 1)
 			self.islands.append(atoll)
 			
+	def objects_to_draw(self):
+		objects = self.islands + self.ships + self.cannonballs + self.ui_elements
+		return objects
 			
 	def draw_screen(self, screen):
 		screen.fill((130,130,130))
 		objects = self.objects_to_draw()
 		for each in objects:
-			screen.blit(each.image, each.rect)
+			if hasattr(each, 'image'):
+				screen.blit(each.image, each.rect)
+			else:
+				each.draw_me()
 		return True
 	
 	def load_file(self, path):
@@ -99,9 +109,10 @@ class PirateGame:
 				
 				##	Need to check for collisions here, except for with the ship the cannonball was fired from
 	
-	def objects_to_draw(self):
-		objects = self.islands + self.ships + self.cannonballs
-		return objects
+	def handle_mouse_press(self, pos):
+		for each in self.ui_elements:
+			if each.rect.collidepoint(pos):
+				each.update(pos)
 	
 	def get_state(self):
 		return self.running
@@ -156,6 +167,48 @@ class Island:
 		self.rect = self.image.get_rect()
 		self.rect.center = self.pos
 
+class UI_element:
+	def __init__(self, coords, sizes, type, colors, variable):
+		##	coords are the rect center, sizes are the horizontal and vertical values
+		##	all represented as percentages of screen size
+		self.coords = coords
+		self.sizes = sizes
+		self.type = type
+		self.colors = colors
+		self.variable = variable
+		
+		ref = screen.get_size()
+		self.bground = pygame.Rect(0,0,0,0)
+		##	Seems we need to set the width and height before setting the center, shit gets wonky otherwise
+		self.bground.width = int(sizes[0] * ref[0])
+		self.bground.height = int(sizes[1] * ref[1])
+		self.bground.center = (int(coords[0] * ref[0]), int(coords[1] * ref[1]))
+		
+		if type == 'vertical':
+			self.fground = pygame.Rect(0,0,0,0)
+			self.fground.width = self.bground.width
+			self.fground.height = 10
+			self.fground.center = (int(coords[0] * ref[0]), self.bground.bottom)
+		
+		
+		self.rect = self.bground
+	
+	def draw_me(self):
+		pygame.draw.rect(screen, self.colors[0], self.bground)
+		pygame.draw.rect(screen, self.colors[1], self.fground)
+	
+	def update(self, pos):
+		print('update fground object', pos)
+		if self.type == 'vertical':
+			##	still not working as intended.  need to find better way to manage shape heights/positions
+			old_y = self.fground.center[1]
+			height_diff = pos[1] - self.fground.center[1] + (self.fground.height / 2)
+			print(old_y, height_diff)
+			self.fground.inflate_ip(0, height_diff)
+			self.fground.move_ip(0, (height_diff / 2))
+		
+		print(self.fground.center[1], self.fground.top)
+		
 def screen_draw_thread(running):
 	while True:
 		game_instance.draw_screen(screen)
@@ -209,6 +262,8 @@ def main():
 				if event.type == KEYDOWN:
 					game_instance.process_event(event.key)
 					break
+				if event.type == MOUSEBUTTONDOWN:
+					game_instance.handle_mouse_press(pygame.mouse.get_pos())
 			running = game_instance.get_state()
 	except:
 		traceback.print_exc(file=sys.stdout)
@@ -226,3 +281,8 @@ if __name__ == "__main__":
 ##	need to generate random fish spots and a port
 ##	need to create second ship and start AI
 ##	need to set target and move ship and execute command on certain conditions
+
+##	thoughts on ui
+##	have array of ui elements, loop through all and draw them on screen
+##	each needs coords(percentages?), styling, and a function or value to change
+##	on mouse click, check if its within the coords of each ui element(pygame.Rect.collidepoint), and execute the function

@@ -13,11 +13,11 @@ import threading
 from pygame.locals import *
 
 ##	max_crew, hull, speed, turning_radius, storage, cannons_per_side
-ship_values = [[5,10,3,10,100,10,10,1,'sprites/pirate-ship.png']]
+ship_values = [[5,10,3,3,100,10,10,1,'sprites/pirate-ship.png']]
 
 class PirateGame:
 	def __init__(self):
-		self.running = True
+		self.running = False
 		self.islands = []
 		self.ships = []
 		self.cannonballs = []
@@ -25,10 +25,13 @@ class PirateGame:
 		self.ships.append(self.user_ship)
 		
 		self.ui_elements = []
-		ui_sail = UI_element((0.90,0.50), (0.10,0.90), 'vertical', ((200,150,200), (255,220,100)), 'self.user_ship.sail')
+		ui_sail = UI_element( (0.94,0.98,0.05,0.95), 'vertical', ((200,150,200), (255,220,100)), self.update_user_ship_sails)
+		ui_wheel = UI_element( (0.4,0.6,0.94,0.98), 'horizontal', ((200,150,200), (255,220,100)), self.update_user_ship_wheel)
 		self.ui_elements.append(ui_sail)
+		self.ui_elements.append(ui_wheel)
 		
 		self.initiate_world(1200,600)
+		self.running = True
 	
 	def initiate_world(self, x_max, y_max):
 		port = Island(10, 0, (random.randrange(x_max), random.randrange(y_max)), 0)
@@ -47,6 +50,7 @@ class PirateGame:
 		objects = self.objects_to_draw()
 		for each in objects:
 			if hasattr(each, 'image'):
+				each.image.unlock()
 				screen.blit(each.image, each.rect)
 			else:
 				each.draw_me()
@@ -54,22 +58,6 @@ class PirateGame:
 	
 	def load_file(self, path):
 		print(path)
-	
-	def rotate_wheel(self, object, angle):
-		object.wheel += angle
-		if object.wheel >= 2 * object.turning_radius:
-			object.wheel = 2 * object.turning_radius
-		if object.wheel <= -2 * object.turning_radius:
-			object.wheel = -2 * object.turning_radius
-	
-	def rotate_ship(self, object):
-		x, y = object.rect.center
-		angle = (object.dir + object.wheel) % 360
-		object.image = pygame.transform.rotate(object.sprite, angle)
-		object.rect = object.image.get_rect()
-		object.rect.center = (x, y)
-		angle = (object.dir + object.wheel) % 360
-		object.dir = angle
 	
 	def fire_cannons(self, ship, offset):
 		x, y = ship.rect.center
@@ -81,10 +69,6 @@ class PirateGame:
 	def process_event(self, event):
 		if event == 'EXIT' or event == K_ESCAPE:
 			self.running = False
-		if event == K_q:
-			self.rotate_wheel(self.user_ship, 2)
-		if event == K_e:
-			self.rotate_wheel(self.user_ship, -2)
 		if event == K_z:
 			self.fire_cannons(self.user_ship, 90)
 		if event == K_c:
@@ -94,10 +78,11 @@ class PirateGame:
 		return True
 	
 	def update_ships(self):
-		##	this should process the movements of ships and i guess any cannonballs
+		##	this should process the movements of ships and maybe any cannonballs, or since they've left their ship instance let the game manage those
 		#print(self.user_ship.dir, self.user_ship.wheel)
 		for ship in self.ships:
-			self.rotate_ship(ship)
+			#self.rotate_ship(ship)
+			ship.rotate()
 	
 	def update_cannonballs(self):
 		if len(self.cannonballs) > 0:
@@ -112,9 +97,17 @@ class PirateGame:
 	def handle_mouse_press(self, pos):
 		for each in self.ui_elements:
 			if each.rect.collidepoint(pos):
-				each.update(pos)
+				##	if clicked in this rect, call it's update function to handle that, and then if needed whatever method updates the variable elsewhere
+				value = each.update(pos)
+				each.update_method(value)
 	
-	def get_state(self):
+	def update_user_ship_sails(self, value):
+		self.user_ship.sail_setting = value
+	
+	def update_user_ship_wheel(self, value):
+		self.user_ship.wheel = value
+	
+	def is_running(self):
 		return self.running
 
 class Ship:
@@ -130,13 +123,24 @@ class Ship:
 		self.cannon_speed = ship_values[type][5]
 		self.cannon_ticks = ship_values[type][6]
 		self.cannons_per_side = ship_values[type][7]
-		
 		self.sprite = pygame.image.load(ship_values[type][8]).convert_alpha()
 		self.image = self.sprite
+		
+		self.sail_setting = 0
 		self.dir = 0
 		self.wheel = 0
 		self.rect = self.image.get_rect()
 		self.rect.center = (200,200)
+	
+	def rotate(self):
+		x, y = self.rect.center
+		##	wheel here is -1 to 1, left to right.  reverse of how were calculating angle/direction, so need to subtract the value
+		angle = (self.dir - self.wheel * self.turning_radius) % 360
+		self.image = pygame.transform.rotate(self.sprite, angle)
+		self.rect = self.image.get_rect()
+		self.rect.center = (x, y)
+		angle = (self.dir - self.wheel * self.turning_radius) % 360
+		self.dir = angle
 
 class Cannonball:
 	def __init__(self, dir, speed, max_ticks, pos):
@@ -168,28 +172,31 @@ class Island:
 		self.rect.center = self.pos
 
 class UI_element:
-	def __init__(self, coords, sizes, type, colors, variable):
+	def __init__(self, pcts, type, colors, update_method):
 		##	coords are the rect center, sizes are the horizontal and vertical values
 		##	all represented as percentages of screen size
-		self.coords = coords
-		self.sizes = sizes
+		self.pcts = pcts
 		self.type = type
 		self.colors = colors
-		self.variable = variable
+		self.update_method = update_method
 		
 		ref = screen.get_size()
-		self.bground = pygame.Rect(0,0,0,0)
-		##	Seems we need to set the width and height before setting the center, shit gets wonky otherwise
-		self.bground.width = int(sizes[0] * ref[0])
-		self.bground.height = int(sizes[1] * ref[1])
-		self.bground.center = (int(coords[0] * ref[0]), int(coords[1] * ref[1]))
 		
-		if type == 'vertical':
-			self.fground = pygame.Rect(0,0,0,0)
-			self.fground.width = self.bground.width
-			self.fground.height = 10
-			self.fground.center = (int(coords[0] * ref[0]), self.bground.bottom)
+		##	these 4 refer to the background/overall rect, not any overlay
+		self.x_left = int(pcts[0] * ref[0])
+		self.x_right = int(pcts[1] * ref[0])
+		self.y_top = int(pcts[2] * ref[1])
+		self.y_bottom = int(pcts[3] * ref[1])
 		
+		##	left, top, width, height
+		self.bground = pygame.Rect(self.x_left, self.y_top, self.x_right - self.x_left, self.y_bottom - self.y_top)
+		
+		if self.type == 'vertical':
+			height = 0
+			self.fground = pygame.Rect(self.x_left, self.y_bottom + height, self.x_right - self.x_left, height)
+		if self.type == 'horizontal':
+			center = int((self.x_right - self.x_left) * 0.5)
+			self.fground = pygame.Rect(self.x_left + center - 4, self.y_top, 8, self.y_bottom - self.y_top)
 		
 		self.rect = self.bground
 	
@@ -198,16 +205,24 @@ class UI_element:
 		pygame.draw.rect(screen, self.colors[1], self.fground)
 	
 	def update(self, pos):
-		print('update fground object', pos)
 		if self.type == 'vertical':
-			##	still not working as intended.  need to find better way to manage shape heights/positions
-			old_y = self.fground.center[1]
-			height_diff = pos[1] - self.fground.center[1] + (self.fground.height / 2)
-			print(old_y, height_diff)
-			self.fground.inflate_ip(0, height_diff)
-			self.fground.move_ip(0, (height_diff / 2))
-		
-		print(self.fground.center[1], self.fground.top)
+			new_height = self.bground.bottom - pos[1]
+			self.fground = pygame.Rect(self.x_left, self.y_bottom - new_height, self.x_right - self.x_left, new_height)
+			new_value = float(new_height / (self.y_bottom - self.y_top))
+		if self.type == 'horizontal':
+			new_position = pos[0]
+			self.fground = pygame.Rect(new_position - 4, self.y_top, 8, self.y_bottom - self.y_top)
+			##	calculates value from 0 to 1 of current position
+			new_value = float((pos[0] - self.x_left) / (self.x_right - self.x_left))
+			##	convert from 0 -> 1 to -1 -> 1
+			new_value = (((new_value - 0) * (1 - -1)) / (1 - 0)) + -1
+			
+		return new_value
+	
+	def resize(self):
+		print('resizing function called, will implement later')
+		##	easy method may be to create the new rects and replace existing ones and redraw
+		##	or basically recall the init function, should pull the new sizes with screen.get_sizes and recalculate everything
 		
 def screen_draw_thread(running):
 	while True:
@@ -226,7 +241,7 @@ def main():
 	random.seed()
 	
 	parser = argparse.ArgumentParser(description='Pirate Sim')
-	parser.add_argument('-s', '--size', type=str, default='640x720', help='size of the game screen')
+	parser.add_argument('-s', '--size', type=str, default='900x800', help='size of the game screen')
 	parser.add_argument('-f', '--file', type=str, default=None, help='game save file to load')
 
 	args = parser.parse_args()
@@ -247,9 +262,9 @@ def main():
 
 	running = True
 	
-	display_thread = threading.Thread(target = screen_draw_thread, args =(lambda : running, ))
-	#display_thread = screen_draw_thread()
+	display_thread = threading.Thread(target = screen_draw_thread, args =(lambda : running, ))	
 	display_thread.start()
+	
 	try:
 		while(running):
 			for event in pygame.event.get():
@@ -264,7 +279,7 @@ def main():
 					break
 				if event.type == MOUSEBUTTONDOWN:
 					game_instance.handle_mouse_press(pygame.mouse.get_pos())
-			running = game_instance.get_state()
+			running = game_instance.is_running()
 	except:
 		traceback.print_exc(file=sys.stdout)
 		running = False
@@ -276,9 +291,7 @@ if __name__ == "__main__":
 
 
 
-##	have ship rotation and cannon fire working
 ##	need movement(either simplified or tied to the wind)
-##	need to generate random fish spots and a port
 ##	need to create second ship and start AI
 ##	need to set target and move ship and execute command on certain conditions
 
@@ -286,3 +299,4 @@ if __name__ == "__main__":
 ##	have array of ui elements, loop through all and draw them on screen
 ##	each needs coords(percentages?), styling, and a function or value to change
 ##	on mouse click, check if its within the coords of each ui element(pygame.Rect.collidepoint), and execute the function
+#######  done, but need to add horizontal and basic click types of ui elements

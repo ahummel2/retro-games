@@ -40,6 +40,8 @@ class PirateGame:
 			##	should do some checks to make sure random x/y arent overlapping
 			atoll = Island(6, 500, (random.randrange(x_max), random.randrange(y_max)), 1)
 			self.islands.append(atoll)
+		self.wind_angle = random.randrange(360)
+		self.wind_speed = random.randrange(6,15)
 			
 	def objects_to_draw(self):
 		objects = self.islands + self.ships + self.cannonballs + self.ui_elements
@@ -83,6 +85,7 @@ class PirateGame:
 		for ship in self.ships:
 			#self.rotate_ship(ship)
 			ship.rotate()
+			ship.move(self.wind_angle, self.wind_speed)
 	
 	def update_cannonballs(self):
 		if len(self.cannonballs) > 0:
@@ -127,6 +130,7 @@ class Ship:
 		self.image = self.sprite
 		
 		self.sail_setting = 0
+		self.sail_angle = 0
 		self.dir = 0
 		self.wheel = 0
 		self.rect = self.image.get_rect()
@@ -141,6 +145,22 @@ class Ship:
 		self.rect.center = (x, y)
 		angle = (self.dir - self.wheel * self.turning_radius) % 360
 		self.dir = angle
+	
+	def move(self, wind_angle, wind_speed):
+		##	calculate the pct of wind the sails are catching(angle of boat/sales vs angle of wind)
+		##	think that's abs(sin(angle1 - angle2))
+		##	eventually this should be based off the sail angle not the boat angle
+		angle_diff = math.fabs((wind_angle - self.dir) % 360)
+		wind_catch_pct = math.fabs(math.sin(math.radians(angle_diff)))
+		wind_force = wind_catch_pct * wind_speed
+		speed = wind_force * self.speed * self.sail_setting
+		
+		##	then move the boat some amount based on its direction and the wind force
+		current_x, current_y = self.rect.center
+		new_x = int(math.cos(math.radians(self.dir)) * speed)
+		new_y = int(math.sin(math.radians(self.dir)) * speed)
+		##	subtract the y, because shits inverted here
+		self.rect.center = (current_x + new_x, current_y - new_y)
 
 class Cannonball:
 	def __init__(self, dir, speed, max_ticks, pos):

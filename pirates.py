@@ -148,8 +148,8 @@ class Ship:
 	
 	def move(self, wind_angle, wind_speed):
 		##	calculate the pct of wind the sails are catching(angle of boat/sales vs angle of wind)
-		##	think that's abs(sin(angle1 - angle2))
-		##	eventually this should be based off the sail angle not the boat angle
+		##	think that's abs(sin(angle1 - angle2)) basically
+		##	need to convert this to use the sail angle, and I guess remove some abs functions
 		angle_diff = math.fabs((wind_angle - self.dir) % 360)
 		wind_catch_pct = math.fabs(math.sin(math.radians(angle_diff)))
 		wind_force = wind_catch_pct * wind_speed
@@ -161,6 +161,38 @@ class Ship:
 		new_y = int(math.sin(math.radians(self.dir)) * speed)
 		##	subtract the y, because shits inverted here
 		self.rect.center = (current_x + new_x, current_y - new_y)
+	
+	def update_state(self):
+		###
+		moving, fishing, port, evading, attacking
+		things that can trigger state changes:
+			arrive at a fishing location -> fishing
+			arrive at port -> port(sell)
+			fishing location expires -> moving(fish)
+			storage is full -> moving(port)
+			storage is empty -> moving(fish)
+			
+		if fishing boat:
+			if arrived at target location:
+				if target was a port:
+					state = port(sell)
+				if target was a fish spot:
+					state = fishing
+			if storage is full:
+				state = moving(port)
+			if storage is empty:
+				state = moving(fish)
+			
+			if fishing:
+				put fish in storage
+				if fishing spot is dead:
+					state = moving(fish)
+			if moving:
+				adjust steering and sails
+			if port:
+				sell storage
+		###
+		pass
 
 class Cannonball:
 	def __init__(self, dir, speed, max_ticks, pos):

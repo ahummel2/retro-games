@@ -12,8 +12,16 @@ import traceback
 import threading
 from pygame.locals import *
 
+def positions_diff(pos1, pos2):
+	x = math.fabs(pos1[0] - pos2[0])
+	y = math.fabs(pos1[1] - pos2[1])
+	return math.sqrt(x*x + y*y)
+
 ##	max_crew, hull, speed, turning_radius, storage, cannons_per_side
-ship_values = [[5,10,3,3,100,10,10,1,'sprites/pirate-ship.png']]
+ship_values = [
+	[5,10, 3, 3, 300, 10,10, 1, 'sprites/pirate-ship.png'], ##	basic ship with cannons
+	[2, 7, 6, 6, 400, 50, 0, 0, 'sprites/pirate-ship.png'], ##	basic fishing ship
+]
 
 class PirateGame:
 	def __init__(self):
@@ -21,8 +29,9 @@ class PirateGame:
 		self.islands = []
 		self.ships = []
 		self.cannonballs = []
-		self.user_ship = Ship()
+		self.user_ship = Ship(ship_type=0, state='player')
 		self.ships.append(self.user_ship)
+		
 		
 		self.ui_elements = []
 		ui_sail = UI_element( (0.94,0.98,0.05,0.95), 'vertical', ((200,150,200), (255,220,100)), self.update_user_ship_sails)
@@ -31,18 +40,27 @@ class PirateGame:
 		self.ui_elements.append(ui_wheel)
 		
 		self.initiate_world(1200,600)
+		self.add_npc_ships()
 		self.running = True
 	
 	def initiate_world(self, x_max, y_max):
-		port = Island(10, 0, (random.randrange(x_max), random.randrange(y_max)), 0)
+		port = Island(0, 0, 10, 0, (random.randrange(x_max), random.randrange(y_max)))
 		self.islands.append(port)
 		for i in range(5):
 			##	should do some checks to make sure random x/y arent overlapping
-			atoll = Island(6, 500, (random.randrange(x_max), random.randrange(y_max)), 1)
+			atoll = Island(i, 1, 6, 500, (random.randrange(x_max), random.randrange(y_max)))
 			self.islands.append(atoll)
 		self.wind_angle = random.randrange(360)
 		self.wind_speed = random.randrange(6,15)
-			
+	
+	def add_npc_ships(self):
+		sailing_guy = Ship(ship_type=1, state='moving-fish')
+		sailing_guy.update_coordinates(500,500)
+		##	set this guys target
+		random_id = random.randrange(1,6)
+		sailing_guy.target = (random_id, self.islands[random_id].pos)
+		self.ships.append(sailing_guy)
+		
 	def objects_to_draw(self):
 		objects = self.islands + self.ships + self.cannonballs + self.ui_elements
 		return objects
@@ -86,6 +104,8 @@ class PirateGame:
 			#self.rotate_ship(ship)
 			ship.rotate()
 			ship.move(self.wind_angle, self.wind_speed)
+			if ship.state != 'player':
+				ship.update_state()
 	
 	def update_cannonballs(self):
 		if len(self.cannonballs) > 0:
@@ -114,15 +134,21 @@ class PirateGame:
 		return self.running
 
 class Ship:
-	def __init__(self, ship_type=0):
+	def __init__(self, ship_type=0, state=False):
 		self.load_ship_stats(ship_type)
+		self.ship_type = ship_type
+		self.state = state
+		self.target = False
+		##	Target should ideally hold the target's id and (x, y)
+		##	(2, (300,400))
 	
 	def load_ship_stats(self, type):
 		self.max_crew = ship_values[type][0]
 		self.hull = ship_values[type][1]
 		self.speed = ship_values[type][2]
 		self.turning_radius = ship_values[type][3]
-		self.storage = ship_values[type][4]
+		self.inventory = {}
+		self.storage_cap = ship_values[type][4]
 		self.cannon_speed = ship_values[type][5]
 		self.cannon_ticks = ship_values[type][6]
 		self.cannons_per_side = ship_values[type][7]
@@ -135,6 +161,9 @@ class Ship:
 		self.wheel = 0
 		self.rect = self.image.get_rect()
 		self.rect.center = (200,200)
+		
+	def update_coordinates(self, x, y):
+		self.rect.center = (x, y)
 	
 	def rotate(self):
 		x, y = self.rect.center
@@ -145,6 +174,11 @@ class Ship:
 		self.rect.center = (x, y)
 		angle = (self.dir - self.wheel * self.turning_radius) % 360
 		self.dir = angle
+		
+		##	have a separate (or overloaded) method for this that rotates a ship to point at its target
+		##	delta_x = self.rect.center[0] - self.target[1][0]
+		##	delta_y = self.rect.center[1] - self.target[1][1]
+		##	radian_angle = math.atan2(delta_y, delta_x)
 	
 	def move(self, wind_angle, wind_speed):
 		##	calculate the pct of wind the sails are catching(angle of boat/sales vs angle of wind)
@@ -162,37 +196,59 @@ class Ship:
 		##	subtract the y, because shits inverted here
 		self.rect.center = (current_x + new_x, current_y - new_y)
 	
-	def update_state(self):
-		###
-		moving, fishing, port, evading, attacking
-		things that can trigger state changes:
-			arrive at a fishing location -> fishing
-			arrive at port -> port(sell)
-			fishing location expires -> moving(fish)
-			storage is full -> moving(port)
-			storage is empty -> moving(fish)
+	def update_state(self):	
+		# moving-fish, moving-port, fishing, port, evading, attacking
+		# things that can trigger state changes:
+			# arrive at a fishing location -> fishing
+			##	if moving-fish and arrived at target, fish
+			# arrive at port -> port(sell)
+			##	if moving-port and arrived at target, port
+			# fishing location expires -> fish, set target
+			##	if fishing and target = False, get new target, moving-fish
+			# storage is full -> port, set target
+			##	if !available_storage, set target to a port, moving-port
+			# storage is empty -> fish, set target
+			##	if available_storage, set target to fish, moving-fish
 			
-		if fishing boat:
-			if arrived at target location:
-				if target was a port:
-					state = port(sell)
-				if target was a fish spot:
-					state = fishing
-			if storage is full:
-				state = moving(port)
-			if storage is empty:
-				state = moving(fish)
+			##	if fishing, remove stock, add to storage
+			##	if port, sell stock, add gold
 			
-			if fishing:
-				put fish in storage
-				if fishing spot is dead:
-					state = moving(fish)
-			if moving:
-				adjust steering and sails
-			if port:
-				sell storage
-		###
-		pass
+		if self.ship_type == 1:
+			if self.state == False:
+				##	find a new target
+				self.state = 'moving-fish'
+			##	check for state updates first, then do the actual things
+			if self.state == 'moving-fish' and positions_diff(self.rect.center, self.target[1]) < 20:
+				self.state = fishing
+			if self.state == 'moving-port' and positions_diff(self.rect.center, self.target[1]) < 20:
+				self.state = port
+				
+			##	need to find a new target for these 3 state changes
+			if self.state == 'fishing' and self.target == False:
+				self.state = 'moving-fish'
+			if self.state == 'fishing':
+				if self.available_storage():
+					## remove stock, add to storage
+					pass
+				else:
+					self.state = 'moving-port'
+			if self.state == 'port':
+				if self.available_storage():
+					##	sell stock, add gold
+					pass
+				else:
+					self.state = 'moving-fish'
+					
+		print(self.state, self.target)
+	
+	def available_storage(self):
+		count = 0
+		for item in self.inventory:
+			count += self.inventory[item]
+		if count < self.storage_cap:
+			return True
+		else:
+			return False
 
 class Cannonball:
 	def __init__(self, dir, speed, max_ticks, pos):
@@ -213,7 +269,8 @@ class Cannonball:
 		self.ticks += 1
 
 class Island:
-	def __init__(self, size, time, pos, type):
+	def __init__(self, id, type, size, time, pos):
+		self.id = id
 		self.size = size
 		self.time = time
 		self.type = type

@@ -39,7 +39,7 @@ class PirateGame:
 		self.ui_elements.append(ui_sail)
 		self.ui_elements.append(ui_wheel)
 		
-		self.initiate_world(1200,600)
+		self.initiate_world(900,800)
 		self.add_npc_ships()
 		self.running = True
 	
@@ -55,7 +55,7 @@ class PirateGame:
 	
 	def add_npc_ships(self):
 		sailing_guy = Ship(ship_type=1, state='moving-fish')
-		sailing_guy.update_coordinates(500,500)
+		sailing_guy.update_coordinates(300,300)
 		##	set this guys target
 		random_id = random.randrange(1,6)
 		sailing_guy.target = (random_id, self.islands[random_id].pos)
@@ -165,7 +165,7 @@ class Ship:
 	def update_coordinates(self, x, y):
 		self.rect.center = (x, y)
 	
-	def rotate(self):
+	def rotate(self, ai=False):
 		x, y = self.rect.center
 		##	wheel here is -1 to 1, left to right.  reverse of how were calculating angle/direction, so need to subtract the value
 		angle = (self.dir - self.wheel * self.turning_radius) % 360
@@ -174,11 +174,6 @@ class Ship:
 		self.rect.center = (x, y)
 		angle = (self.dir - self.wheel * self.turning_radius) % 360
 		self.dir = angle
-		
-		##	have a separate (or overloaded) method for this that rotates a ship to point at its target
-		##	delta_x = self.rect.center[0] - self.target[1][0]
-		##	delta_y = self.rect.center[1] - self.target[1][1]
-		##	radian_angle = math.atan2(delta_y, delta_x)
 	
 	def move(self, wind_angle, wind_speed):
 		##	calculate the pct of wind the sails are catching(angle of boat/sales vs angle of wind)
@@ -213,14 +208,16 @@ class Ship:
 			##	if fishing, remove stock, add to storage
 			##	if port, sell stock, add gold
 			
+		distance = positions_diff(self.rect.center, self.target[1])
 		if self.ship_type == 1:
 			if self.state == False:
 				##	find a new target
 				self.state = 'moving-fish'
 			##	check for state updates first, then do the actual things
-			if self.state == 'moving-fish' and positions_diff(self.rect.center, self.target[1]) < 20:
+			##	distance should be compared against the actual item size eventually
+			if self.state == 'moving-fish' and distance < 20:
 				self.state = fishing
-			if self.state == 'moving-port' and positions_diff(self.rect.center, self.target[1]) < 20:
+			if self.state == 'moving-port' and distance < 20:
 				self.state = port
 				
 			##	need to find a new target for these 3 state changes
@@ -239,7 +236,51 @@ class Ship:
 				else:
 					self.state = 'moving-fish'
 					
-		print(self.state, self.target)
+		print(self.state, self.rect.center, self.target, distance)
+		self.update_wheel_and_sails(self.target, distance)
+	
+	def update_wheel_and_sails(self, target, distance):
+		delta_x = target[1][0] - self.rect.center[0]
+		delta_y = target[1][1] - self.rect.center[1]
+		radian_angle = math.atan2(delta_y, delta_x)
+		target_degree = math.degrees(radian_angle)
+		diff = self.dir + target_degree
+		
+		##	-180 to 180, convert to 0 to 360
+		##	convert from 0 -> 1 to -1 -> 1
+		## NewValue = (((OldValue - OldMin) * (NewMax - NewMin)) / (OldMax - OldMin)) + NewMin
+		converted = (((target_degree - -180) * (360 - 0)) / (180 - -180)) + 0
+		
+		alt = target_degree * -1
+		if alt < 0:
+			alt += 360
+		
+		diff2 = (self.dir - alt) % 360
+		print(target_degree, converted, self.dir, alt, diff, diff2)
+		
+		if diff2 > 10:
+			self.wheel = 1
+		elif 5 > diff2 > 10:
+			self.wheel = 0.3
+		elif diff2 < -10:
+			self.wheel = -1
+		elif -10 < diff2 < -5:
+			self.wheel = -0.3
+		else:
+			self.wheel = 0
+		
+		if distance > 200:
+			self.sail_setting = 1
+		##	could probably calculate this better, but this works for now
+		if distance < 150:
+			self.sail_setting = 0.6
+		if distance < 100:
+			self.sail_setting = 0.3
+		if distance < 50:
+			self.sail_setting = 0.1
+		##	if too close or too far away, slow down and get the angle right
+		if distance < 20 or math.fabs(target_degree) > 60:
+			self.sail_setting = 0
 	
 	def available_storage(self):
 		count = 0
@@ -364,7 +405,7 @@ def main():
 	ship_update = pygame.USEREVENT + 2
 	
 	pygame.time.set_timer(cannonball_update, 50)
-	pygame.time.set_timer(ship_update, 400)
+	pygame.time.set_timer(ship_update, 3000) # 500)
 	game_instance = PirateGame()
 	if args.file:
 		game_instance.load_save(args.file)

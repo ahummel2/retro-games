@@ -20,8 +20,10 @@ def positions_diff(pos1, pos2):
 ##	max_crew, hull, speed, turning_radius, storage, cannons_per_side
 ship_values = [
 	[5,10, 3, 3, 300, 10,10, 1, 'sprites/pirate-ship.png'], ##	basic ship with cannons
-	[2, 7, 6, 6, 400, 50, 0, 0, 'sprites/pirate-ship.png'], ##	basic fishing ship
+	[2, 7, 6, 6, 40, 50, 0, 0, 'sprites/pirate-ship.png'], ##	basic fishing ship
 ]
+
+market_rates = {'fish0':1, 'fish1':2, 'fish2':4, 'fish3': 6, 'fish4': 10, 'fish5': 16}
 
 class PirateGame:
 	def __init__(self):
@@ -39,16 +41,19 @@ class PirateGame:
 		self.ui_elements.append(ui_sail)
 		self.ui_elements.append(ui_wheel)
 		
-		self.initiate_world(900,800)
+		self.x_max = 900
+		self.y_max = 800
+		self.initiate_world()
 		self.add_npc_ships()
 		self.running = True
 	
-	def initiate_world(self, x_max, y_max):
-		port = Island(self, 0, 0, 10, 0, (random.randrange(x_max), random.randrange(y_max)))
+	def initiate_world(self):
+		port = Island(self, 0, 0, 10, 0, (random.randrange(self.x_max), random.randrange(self.y_max)))
 		self.islands.append(port)
-		for i in range(5):
+		num_ports = len(self.islands)
+		for i in range(num_ports, num_ports + 6):
 			##	should do some checks to make sure random x/y arent overlapping
-			atoll = Island(self, i, 1, 6, 500, (random.randrange(x_max), random.randrange(y_max)))
+			atoll = Island(self, i, 1, 6, 500, (random.randrange(self.x_max), random.randrange(self.y_max)))
 			self.islands.append(atoll)
 		self.wind_angle = random.randrange(360)
 		self.wind_speed = random.randrange(6,15)
@@ -63,8 +68,14 @@ class PirateGame:
 		index = 0
 		for island in self.islands:
 			if island.id == id:
-				self.islands.pop(index)
-				return
+				##	dont remove port islands, theys important
+				if island.type == 0:
+					return
+				else:
+					self.islands.pop(index)
+					atoll = Island(self, len(self.islands), 1, 6, 500, (random.randrange(self.x_max), random.randrange(self.y_max)))
+					self.islands.append(atoll)
+					return
 			index += 1
 	
 	def add_npc_ships(self):
@@ -148,12 +159,16 @@ class PirateGame:
 	
 	def get_closest_island(self, position, type):
 		##	loop through island array, find closest id by distance
-		current_best = (99999,99999)
+		current_best = (False, 99999)
 		for island in self.islands:
-			diff = positions_diff(position, island.pos)
-			if diff < current_best[1]:
-				current_best = (island.id, diff)
+			print(island.id, island.type, island.pos)
+			if island.type == type:
+				diff = positions_diff(position, island.pos)
+				print(diff)
+				if diff < current_best[1]:
+					current_best = (island.id, diff)
 		
+		print('heading to: ', current_best[0])
 		return current_best[0]
 	
 	def is_running(self):
@@ -179,6 +194,7 @@ class Ship:
 		self.cannons_per_side = ship_values[type][7]
 		self.sprite = pygame.image.load(ship_values[type][8]).convert_alpha()
 		self.image = self.sprite
+		self.gold = 0
 		
 		self.sail_setting = 0
 		self.sail_angle = 0
@@ -208,6 +224,8 @@ class Ship:
 		wind_catch_pct = math.fabs(math.sin(math.radians(angle_diff)))
 		wind_force = wind_catch_pct * wind_speed
 		speed = wind_force * self.speed * self.sail_setting
+		if speed < 0.1:
+			speed += 0.06
 		
 		##	then move the boat some amount based on its direction and the wind force
 		current_x, current_y = self.rect.center
@@ -233,12 +251,18 @@ class Ship:
 			##	if fishing, remove stock, add to storage
 			##	if port, sell stock, add gold
 			
-		distance = positions_diff(self.rect.center, self.target.pos)
+		if self.target:
+			distance = positions_diff(self.rect.center, self.target.pos)
+		else:
+			##	this amy not be needed but just in case
+			next_id = self.game.get_closest_island(self.rect.center, 1)
+			self.target = self.game.get_island(next_id)
+			distance = positions_diff(self.rect.center, self.target.pos)
 		if self.ship_type == 1:
 			if self.state == False:
 				##	find a new target
 				next_id = self.game.get_closest_island(self.rect.center, 1)
-				self.target = self.game.get_islands(next_id)
+				self.target = self.game.get_island(next_id)
 				self.state = 'moving-fish'
 			##	check for state updates first, then do the actual things
 			##	distance should be compared against the actual item size eventually
@@ -268,11 +292,20 @@ class Ship:
 							self.inventory[self.target.fish_type] = 1
 				else:
 					self.state = 'moving-port'
-				print(self.target.fish_count, self.inventory)
+					next_id = self.game.get_closest_island(self.rect.center, 0)
+					self.target = self.game.get_island(next_id)
+					return
+				print(self.state, self.target.fish_count, self.inventory)
 			if self.state == 'port':
-				if self.available_storage():
+				if not self.available_storage():
 					##	sell stock, add gold
-					pass
+					prices = self.target.get_prices()
+					for item in self.inventory:
+						value = prices[item]
+						print('exchanging ', self.inventory[item], item, ' at ', value, 'each')
+						self.gold += (value * self.inventory[item])
+						self.inventory[item] = 0
+					return
 				else:
 					self.state = 'moving-fish'
 		
@@ -323,14 +356,10 @@ class Ship:
 		
 		##	if the direction is really off, cut the sail size a lot so we can turn first
 		if 70 < converted < 290:
-			print('angle is really off')
 			self.sail_setting = 0.1
 		##	if we're close but the angle is off, get the angle right first
 		if ((distance < 70) and (20 < converted < 340)):
-			print('too close?')
 			self.sail_setting = 0
-		
-		print(converted, distance)
 	
 	def available_storage(self):
 		count = 0
@@ -371,11 +400,18 @@ class Island:
 		self.image = self.sprite
 		self.rect = self.image.get_rect()
 		self.rect.center = self.pos
+		self.fish_count = 0
+		self.fish_type = 0
 		
 		##	fishing location, create random school size/type
 		if self.type == 1:
 			self.fish_type = 'fish' + str(random.randrange(1,6))
 			self.fish_count = random.randrange(20,30)
+		
+	def get_prices(self):
+		##	Can randomize this or change in some way based on port ownership perhaps.
+		##	For now, just load the global prices
+		return market_rates
 
 class UI_element:
 	def __init__(self, pcts, type, colors, update_method):
@@ -461,7 +497,7 @@ def main():
 	ship_update = pygame.USEREVENT + 2
 	
 	pygame.time.set_timer(cannonball_update, 50)
-	#pygame.time.set_timer(ship_update, 3000) # 500)
+	pygame.time.set_timer(ship_update, 3000) # 500)
 	game_instance = PirateGame()
 	if args.file:
 		game_instance.load_save(args.file)
